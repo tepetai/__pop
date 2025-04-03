@@ -231,18 +231,18 @@
             font-weight: 500;
         }
 
-        .rotate-controls {
+        .page-actions {
             display: flex;
             gap: 0.5rem;
         }
 
-        .rotate-controls button {
+        .page-actions button {
             padding: 0.5rem 1rem;
             background: var(--bg-sidebar);
             color: var(--text-primary);
         }
 
-        .rotate-controls button:hover {
+        .page-actions button:hover {
             background: var(--border);
         }
 
@@ -254,6 +254,9 @@
         canvas {
             max-width: 100%;
             height: auto;
+            display: block;
+            margin: 0 auto;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
         }
 
         .selection-area {
@@ -370,10 +373,12 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
     <script>
         // Initialize PDF.js
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        const { jsPDF } = window.jspdf;
 
         // Load saved settings
         function loadSettings() {
@@ -462,6 +467,7 @@
         const rotations = {};
         let currentOcrText = '';
         let tooltip = null;
+        let pdfFile = null;
 
         // Create tooltip element
         function createTooltip() {
@@ -503,9 +509,52 @@
             document.getElementById('status').textContent = `All pages rotated`;
         }
 
+        // Download single page as PDF
+        async function downloadPage(pageNum) {
+            if (!pdfDoc) return;
+            
+            document.getElementById('status').textContent = `Preparing page ${pageNum} for download...`;
+            
+            try {
+                const page = await pdfDoc.getPage(pageNum);
+                const rotation = rotations[pageNum] || 0;
+                
+                // Create a canvas with higher resolution
+                const viewport = page.getViewport({ scale: 2.0, rotation });
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                
+                await page.render({
+                    canvasContext: context,
+                    viewport: viewport
+                }).promise;
+                
+                // Create a new PDF with the page
+                const pdf = new jsPDF({
+                    orientation: viewport.width > viewport.height ? 'landscape' : 'portrait',
+                    unit: 'pt',
+                    format: [viewport.width, viewport.height]
+                });
+                
+                // Add the canvas image to the PDF
+                pdf.addImage(canvas.toDataURL('image/jpeg', 1.0), 'JPEG', 0, 0, viewport.width, viewport.height);
+                
+                // Save the PDF
+                pdf.save(`page_${pageNum}.pdf`);
+                document.getElementById('status').textContent = `Page ${pageNum} downloaded`;
+            } catch (error) {
+                console.error('Error downloading page:', error);
+                document.getElementById('status').textContent = "Error downloading page";
+            }
+        }
+
         document.getElementById('file-input').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (file) {
+                pdfFile = file;
                 document.getElementById('status').textContent = "Loading PDF...";
                 const reader = new FileReader();
                 reader.onload = async function(event) {
@@ -524,7 +573,11 @@
 
         async function loadPDF(data) {
             try {
-                pdfDoc = await pdfjsLib.getDocument({ data: data }).promise;
+                pdfDoc = await pdfjsLib.getDocument({ 
+                    data: data,
+                    cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
+                    cMapPacked: true
+                }).promise;
                 await renderPages();
             } catch (error) {
                 console.error('Error in loadPDF:', error);
@@ -540,14 +593,17 @@
                 const pageContainer = document.createElement('div');
                 pageContainer.className = 'page-container';
                 
-                const rotateControls = document.createElement('div');
-                rotateControls.className = 'rotate-controls';
-                rotateControls.innerHTML = `
-                    <button onclick="rotatePage(${pageNum}, -90)">↶</button>
-                    <button onclick="rotatePage(${pageNum}, 90)">↷</button>
-                    <span style="flex:1; text-align:center;">Page ${pageNum}</span>
+                const pageHeader = document.createElement('div');
+                pageHeader.className = 'page-header';
+                pageHeader.innerHTML = `
+                    <span>Page ${pageNum}</span>
+                    <div class="page-actions">
+                        <button onclick="rotatePage(${pageNum}, -90)">↶</button>
+                        <button onclick="rotatePage(${pageNum}, 90)">↷</button>
+                        <button onclick="downloadPage(${pageNum})">Download</button>
+                    </div>
                 `;
-                pageContainer.appendChild(rotateControls);
+                pageContainer.appendChild(pageHeader);
 
                 const canvasContainer = document.createElement('div');
                 canvasContainer.className = 'canvas-container';
@@ -578,12 +634,21 @@
             try {
                 const page = await pdfDoc.getPage(pageNum);
                 const rotation = rotations[pageNum] || 0;
-                const viewport = page.getViewport({ scale: 1.5, rotation });
+                
+                // Increase scale for better quality
+                const viewport = page.getViewport({ 
+                    scale: window.devicePixelRatio * 1.5, 
+                    rotation 
+                });
                 
                 canvas.width = viewport.width;
                 canvas.height = viewport.height;
+                canvas.style.width = `${viewport.width / window.devicePixelRatio}px`;
+                canvas.style.height = `${viewport.height / window.devicePixelRatio}px`;
 
                 const context = canvas.getContext('2d');
+                context.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+                
                 await page.render({
                     canvasContext: context,
                     viewport: viewport
@@ -683,13 +748,21 @@
             const height = rect.height;
 
             const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = width;
-            tempCanvas.height = height;
+            tempCanvas.width = width * window.devicePixelRatio;
+            tempCanvas.height = height * window.devicePixelRatio;
             const ctx = tempCanvas.getContext('2d');
-
-            ctx.drawImage(currentCanvas, 
-                x, y, width, height,
-                0, 0, width, height
+            
+            // Draw the selected area with high resolution
+            ctx.drawImage(
+                currentCanvas, 
+                x * window.devicePixelRatio, 
+                y * window.devicePixelRatio, 
+                width * window.devicePixelRatio, 
+                height * window.devicePixelRatio,
+                0, 
+                0, 
+                width * window.devicePixelRatio, 
+                height * window.devicePixelRatio
             );
 
             // Get selected options
@@ -805,6 +878,9 @@
 
         // Make rotateAllPages function globally available
         window.rotateAllPages = rotateAllPages;
+
+        // Make downloadPage function globally available
+        window.downloadPage = downloadPage;
     </script>
 </body>
 </html>
