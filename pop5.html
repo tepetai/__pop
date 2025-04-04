@@ -358,6 +358,13 @@
                 </label>
             </div>
 
+            <div class="checkbox-option">
+                <label>
+                    <input type="checkbox" id="find-date" checked>
+                    Find and format dates
+                </label>
+            </div>
+
             <div class="status" id="status">Ready - select area on PDF</div>
 
             <div id="ocr-result-container">
@@ -406,6 +413,10 @@
                 document.getElementById('auto-copy').checked = settings.autoCopy;
             }
             
+            if (settings.findDate !== undefined) {
+                document.getElementById('find-date').checked = settings.findDate;
+            }
+            
             return settings;
         }
 
@@ -418,13 +429,15 @@
             const symbols = document.getElementById('symbols-list').value;
             const preserveNewlines = document.getElementById('preserve-newlines').checked;
             const autoCopy = document.getElementById('auto-copy').checked;
+            const findDate = document.getElementById('find-date').checked;
             
             const settings = {
                 languages,
                 digits,
                 symbols,
                 preserveNewlines,
-                autoCopy
+                autoCopy,
+                findDate
             };
             
             localStorage.setItem('pdfOcrSettings', JSON.stringify(settings));
@@ -448,39 +461,80 @@
             }
         }
 
-        // Improved function to convert number sequences to dates with various separators
-        function convertNumbersToDates(text) {
-            // Patterns for different date formats with separators
+        // Recursive function to clean and format dates
+        function cleanAndFormatDate(text, attempts = 5) {
+            if (attempts <= 0) return text;
+            
+            // Remove all spaces and non-digit/non-dot characters
+            let cleaned = text.replace(/[^\d.]/g, '');
+            
+            // Process date patterns
             const datePatterns = [
-                // DD.MM.YYYY or DD-MM-YYYY or DD/MM/YYYY or DD_MM_YYYY
+                // DD.MM.YYYY or DDMMYYYY
+                /(\d{2})[\.]?(\d{2})[\.]?(20\d{2})/,
+                // MM.DD.YYYY or MMDDYYYY
+                /(\d{2})[\.]?(\d{2})[\.]?(20\d{2})/
+            ];
+            
+            for (const pattern of datePatterns) {
+                cleaned = cleaned.replace(pattern, (match, p1, p2, p3) => {
+                    const day = parseInt(p1, 10);
+                    const month = parseInt(p2, 10);
+                    const year = p3;
+                    
+                    // Validate date (simple validation)
+                    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                        return `${day.toString().padStart(2, '0')}.${month.toString().padStart(2, '0')}.${year}`;
+                    }
+                    return match;
+                });
+            }
+            
+            // Recursively process if needed
+            if (attempts > 1) {
+                return cleanAndFormatDate(cleaned, attempts - 1);
+            }
+            
+            return cleaned;
+        }
+
+        // Improved date detection and formatting
+        function convertNumbersToDates(text) {
+            if (!document.getElementById('find-date').checked) {
+                return text;
+            }
+
+            // Try multiple patterns and cleaning methods
+            const patterns = [
+                // DD.MM.YYYY or DD-MM-YYYY or DD/MM/YYYY
                 /(\d{2})[\.\-\/_](\d{2})[\.\-\/_](20\d{2})/g,
                 // DD MM YYYY (with spaces)
                 /(\d{2})\s(\d{2})\s(20\d{2})/g,
                 // 8 consecutive digits (DDMMYYYY)
                 /(\d{2})(\d{2})(20\d{2})/g,
-                // Other variations with mixed separators
-                /(\d{2})[\.\-\/_](\d{2})\s(20\d{2})/g,
-                /(\d{2})\s(\d{2})[\.\-\/_](20\d{2})/g
+                // Other variations
+                /(\d{1,2})[\.\-\/_](\d{1,2})[\.\-\/_](20\d{2})/g,
+                /(\d{1,2})\s(\d{1,2})\s(20\d{2})/g
             ];
 
-            datePatterns.forEach(pattern => {
-                text = text.replace(pattern, (match, day, month, year) => {
-                    const dayNum = parseInt(day, 10);
-                    const monthNum = parseInt(month, 10);
+            let result = text;
+            
+            // Apply each pattern
+            patterns.forEach(pattern => {
+                result = result.replace(pattern, (match, p1, p2, p3) => {
+                    const day = parseInt(p1, 10);
+                    const month = parseInt(p2, 10);
+                    const year = p3;
                     
-                    // Validate day and month
-                    if (monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31) {
-                        // Format with leading zeros
-                        const formattedDay = day.padStart(2, '0');
-                        const formattedMonth = month.padStart(2, '0');
-                        return `${formattedDay}.${formattedMonth}.${year}`;
+                    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                        return `${day.toString().padStart(2, '0')}.${month.toString().padStart(2, '0')}.${year}`;
                     }
-                    
                     return match;
                 });
             });
 
-            return text;
+            // Apply recursive cleaning
+            return cleanAndFormatDate(result);
         }
 
         // Initialize with saved settings
@@ -838,6 +892,7 @@
             const symbols = document.getElementById('symbols-list').value;
             const preserveNewlines = document.getElementById('preserve-newlines').checked;
             const autoCopy = document.getElementById('auto-copy').checked;
+            const findDate = document.getElementById('find-date').checked;
             
             // Configure OCR options
             let options = {
@@ -896,8 +951,10 @@
                     filteredText = filteredText.replace(/\n/g, ' ');
                 }
 
-                // Convert number sequences to dates
-                filteredText = convertNumbersToDates(filteredText);
+                // Convert number sequences to dates if enabled
+                if (findDate) {
+                    filteredText = convertNumbersToDates(filteredText);
+                }
                 
                 // Display results
                 document.getElementById('ocr-result').textContent = filteredText;
