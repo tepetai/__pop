@@ -1,0 +1,1232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF OCR Processor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --danger: #dc2626;
+            --danger-hover: #b91c1c;
+            --bg-sidebar: #f8fafc;
+            --bg-main: #ffffff;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --border: #e2e8f0;
+            --multi-select: #10b981;
+            --multi-select-hover: #059669;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            color: var(--text-primary);
+            background: var(--bg-main);
+            line-height: 1.5;
+        }
+
+        .container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .controls {
+            width: 320px;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
+            padding: 1.5rem;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+        }
+
+        .controls h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            color: var(--text-primary);
+        }
+
+        .controls h3 {
+            font-size: 1rem;
+            font-weight: 500;
+            margin: 1rem 0 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .pdf-container {
+            flex: 1;
+            padding: 2rem;
+            margin-left: 320px;
+            background: var(--bg-main);
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            margin-bottom: 1.5rem;
+        }
+
+        #file-input {
+            opacity: 0;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-input-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.75rem;
+            background: var(--primary);
+            color: white;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .file-input-label:hover {
+            background: var(--primary-hover);
+        }
+
+        .language-options {
+            margin: 1rem 0;
+            padding: 1rem;
+            background: white;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border);
+        }
+
+        .language-options label {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 0;
+            cursor: pointer;
+            color: var(--text-primary);
+        }
+
+        .language-options input[type="checkbox"] {
+            margin-right: 0.75rem;
+            width: 1rem;
+            height: 1rem;
+        }
+
+        .symbols-input {
+            margin: 1rem 0;
+        }
+
+        .symbols-input input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            transition: border-color 0.2s;
+        }
+
+        .symbols-input input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .checkbox-option {
+            margin: 1rem 0;
+        }
+
+        .checkbox-option label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            color: var(--text-primary);
+        }
+
+        .checkbox-option input {
+            margin-right: 0.75rem;
+        }
+
+        .status {
+            margin: 1rem 0;
+            padding: 0.75rem;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        #ocr-result {
+            margin: 1rem 0;
+            padding: 1rem;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            min-height: 100px;
+            font-size: 0.875rem;
+            white-space: pre-wrap;
+        }
+
+        .result-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        button {
+            padding: 0.75rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 0.875rem;
+        }
+
+        button.primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        button.primary:hover {
+            background: var(--primary-hover);
+        }
+
+        button.danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        button.danger:hover {
+            background: var(--danger-hover);
+        }
+
+        button.multi-select {
+            background: var(--multi-select);
+            color: white;
+        }
+
+        button.multi-select:hover {
+            background: var(--multi-select-hover);
+        }
+
+        .page-container {
+            background: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .page-header {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .page-header span {
+            flex: 1;
+            font-weight: 500;
+        }
+
+        .page-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .page-actions button {
+            padding: 0.5rem 1rem;
+            background: var(--bg-sidebar);
+            color: var(--text-primary);
+        }
+
+        .page-actions button:hover {
+            background: var(--border);
+        }
+
+        .canvas-container {
+            position: relative;
+            padding: 1rem;
+        }
+
+        canvas {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+
+        .selection-area {
+            position: absolute;
+            border: 2px solid var(--primary);
+            background: rgba(37, 99, 235, 0.1);
+            display: none;
+            pointer-events: none;
+        }
+
+        .multi-selection-area {
+            position: absolute;
+            border: 2px dashed var(--multi-select);
+            background: rgba(16, 185, 129, 0.1);
+            display: none;
+            pointer-events: none;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1000;
+            pointer-events: none;
+            max-width: 300px;
+            word-wrap: break-word;
+        }
+
+        .rotate-all-buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .rotate-all-buttons button {
+            flex: 1;
+        }
+
+        .multi-select-buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .multi-select-buttons button {
+            flex: 1;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .controls {
+                position: static;
+                width: 100%;
+                height: auto;
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+            
+            .pdf-container {
+                margin-left: 0;
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <h2>PDF OCR Tool</h2>
+            
+            <div class="file-input-wrapper">
+                <input type="file" id="file-input" accept=".pdf">
+                <div class="file-input-label">Choose PDF File</div>
+            </div>
+            
+            <div class="rotate-all-buttons">
+                <button onclick="rotateAllPages(-90)" class="primary">Rotate All Left</button>
+                <button onclick="rotateAllPages(90)" class="primary">Rotate All Right</button>
+            </div>
+            
+            <div class="multi-select-buttons">
+                <button id="start-multi-select" class="multi-select">Start Multi Select</button>
+                <button id="process-multi-select" class="multi-select" disabled>Process Selections</button>
+            </div>
+            
+            <div class="language-options">
+                <h3>OCR Language</h3>
+                <label>
+                    <input type="checkbox" value="rus" checked> Russian
+                </label>
+                <label>
+                    <input type="checkbox" value="eng"> English
+                </label>
+                <label>
+                    <input type="checkbox" value="digits" id="digits-checkbox" checked> Digits (0-9)
+                </label>
+            </div>
+
+            <div class="symbols-input">
+                <h3>Allowed Symbols</h3>
+                <input type="text" id="symbols-list" value="-." placeholder="Enter allowed symbols (e.g. -+.,!?)">
+            </div>
+
+            <div class="checkbox-option">
+                <label>
+                    <input type="checkbox" id="preserve-newlines" checked>
+                    Preserve line breaks
+                </label>
+            </div>
+
+            <div class="checkbox-option">
+                <label>
+                    <input type="checkbox" id="trim-newlines">
+                    Удалять отступы строк
+                </label>
+            </div>
+
+            <div class="checkbox-option">
+                <label>
+                    <input type="checkbox" id="auto-copy" checked>
+                    Auto copy to clipboard
+                </label>
+            </div>
+
+            <div class="status" id="status">Ready - select area on PDF</div>
+
+            <div id="ocr-result-container">
+                <h3>OCR Result</h3>
+                <div id="ocr-result"></div>
+                <div class="result-actions">
+                    <button id="copy-result" class="primary">Copy Text</button>
+                    <button id="clear-result" class="danger">Clear</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="pdf-container" id="pdf-container"></div>
+    </div>
+
+    <script>
+        // Initialize PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        const { jsPDF } = window.jspdf;
+
+        // Load saved settings
+        function loadSettings() {
+            const settings = JSON.parse(localStorage.getItem('pdfOcrSettings')) || {};
+            
+            if (settings.languages) {
+                document.querySelectorAll('.language-options input').forEach(checkbox => {
+                    if (checkbox.value !== 'digits') {
+                        checkbox.checked = settings.languages.includes(checkbox.value);
+                    }
+                });
+            }
+            
+            if (settings.digits !== undefined) {
+                document.getElementById('digits-checkbox').checked = settings.digits;
+            }
+            
+            if (settings.symbols) {
+                document.getElementById('symbols-list').value = settings.symbols;
+            }
+            
+            if (settings.preserveNewlines !== undefined) {
+                document.getElementById('preserve-newlines').checked = settings.preserveNewlines;
+            }
+            
+            if (settings.trimNewlines !== undefined) {
+                document.getElementById('trim-newlines').checked = settings.trimNewlines;
+            }
+            
+            if (settings.autoCopy !== undefined) {
+                document.getElementById('auto-copy').checked = settings.autoCopy;
+            }
+            
+            return settings;
+        }
+
+        // Save settings
+        function saveSettings() {
+            const languages = Array.from(document.querySelectorAll('.language-options input:checked'))
+                                .filter(checkbox => checkbox.value !== 'digits')
+                                .map(checkbox => checkbox.value);
+            const digits = document.getElementById('digits-checkbox').checked;
+            const symbols = document.getElementById('symbols-list').value;
+            const preserveNewlines = document.getElementById('preserve-newlines').checked;
+            const trimNewlines = document.getElementById('trim-newlines').checked;
+            const autoCopy = document.getElementById('auto-copy').checked;
+            
+            const settings = {
+                languages,
+                digits,
+                symbols,
+                preserveNewlines,
+                trimNewlines,
+                autoCopy
+            };
+            
+            localStorage.setItem('pdfOcrSettings', JSON.stringify(settings));
+        }
+
+        // Copy text to clipboard
+        async function copyToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                document.getElementById('status').textContent = "Text copied to clipboard";
+                setTimeout(() => {
+                    if (!selecting && !multiSelectMode) {
+                        document.getElementById('status').textContent = "Ready - select area on PDF";
+                    }
+                }, 2000);
+                return true;
+            } catch (error) {
+                console.error('Failed to copy text:', error);
+                document.getElementById('status').textContent = "Failed to copy text";
+                return false;
+            }
+        }
+
+        // Function to convert number sequences to dates
+        function convertNumbersToDates(text) {
+            // Pattern for 8 digits where 5-6 digits are "20" (for years 2000-2099)
+            const dateRegex = /(\d{2})(\d{2})(20\d{2})/g;
+            
+            return text.replace(dateRegex, (match, day, month, year) => {
+                const dayNum = parseInt(day, 10);
+                const monthNum = parseInt(month, 10);
+                
+                // Validate day and month
+                if (monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31) {
+                    // Format with leading zeros
+                    const formattedDay = day.toString().padStart(2, '0');
+                    const formattedMonth = month.toString().padStart(2, '0');
+                    return `${formattedDay}.${formattedMonth}.${year}`;
+                }
+                
+                return match;
+            });
+        }
+
+        // Initialize with saved settings
+        const settings = loadSettings();
+
+        let pdfDoc = null;
+        let currentPage = 1;
+        let selecting = false;
+        let multiSelectMode = false;
+        let multiSelectAreas = [];
+        let startX, startY;
+        let selection = null;
+        let currentCanvas = null;
+        const rotations = {};
+        let currentOcrText = '';
+        let tooltip = null;
+        let pdfFile = null;
+
+        // Create tooltip element
+        function createTooltip() {
+            tooltip = document.createElement('div');
+            tooltip.className = 'tooltip';
+            tooltip.style.display = 'none';
+            document.body.appendChild(tooltip);
+        }
+
+        // Show tooltip with text
+        function showTooltip(text, x, y) {
+            if (!tooltip) createTooltip();
+            tooltip.textContent = text;
+            tooltip.style.display = 'block';
+            tooltip.style.left = `${x + 10}px`;
+            tooltip.style.top = `${y + 10}px`;
+        }
+
+        // Hide tooltip
+        function hideTooltip() {
+            if (tooltip) tooltip.style.display = 'none';
+        }
+
+        // Rotate all pages
+        async function rotateAllPages(degrees) {
+            if (!pdfDoc) return;
+            
+            document.getElementById('status').textContent = `Rotating all pages...`;
+            
+            for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+                rotations[pageNum] = (rotations[pageNum] || 0) + degrees;
+                const canvas = document.querySelector(`canvas[data-page="${pageNum}"]`);
+                if (canvas) {
+                    await renderPage(pageNum, canvas);
+                }
+            }
+            
+            document.getElementById('status').textContent = `All pages rotated`;
+        }
+
+        // Download single page as PDF
+        async function downloadPage(pageNum) {
+            if (!pdfDoc) return;
+            
+            document.getElementById('status').textContent = `Preparing page ${pageNum} for download...`;
+            
+            try {
+                const page = await pdfDoc.getPage(pageNum);
+                const rotation = rotations[pageNum] || 0;
+                
+                // Create a canvas with higher resolution
+                const viewport = page.getViewport({ scale: 3.0, rotation });
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                
+                await page.render({
+                    canvasContext: context,
+                    viewport: viewport
+                }).promise;
+                
+                // Create a new PDF with the page
+                const pdf = new jsPDF({
+                    orientation: viewport.width > viewport.height ? 'landscape' : 'portrait',
+                    unit: 'pt',
+                    format: [viewport.width, viewport.height]
+                });
+                
+                // Add the canvas image to the PDF
+                pdf.addImage(canvas.toDataURL('image/jpeg', 1.0), 'JPEG', 0, 0, viewport.width, viewport.height);
+                
+                // Save the PDF
+                pdf.save(`page_${pageNum}.pdf`);
+                document.getElementById('status').textContent = `Page ${pageNum} downloaded`;
+            } catch (error) {
+                console.error('Error downloading page:', error);
+                document.getElementById('status').textContent = "Error downloading page";
+            }
+        }
+
+        // Start multi-select mode
+        function startMultiSelect() {
+            multiSelectMode = true;
+            multiSelectAreas = [];
+            document.getElementById('status').textContent = "Multi-select mode - select multiple areas";
+            document.getElementById('start-multi-select').textContent = "Cancel Multi Select";
+            document.getElementById('process-multi-select').disabled = false;
+            
+            // Clear all existing multi-selection areas
+            document.querySelectorAll('.multi-selection-area').forEach(el => el.remove());
+        }
+
+        // Cancel multi-select mode
+        function cancelMultiSelect() {
+            multiSelectMode = false;
+            document.getElementById('status').textContent = "Ready - select area on PDF";
+            document.getElementById('start-multi-select').textContent = "Start Multi Select";
+            document.getElementById('process-multi-select').disabled = true;
+            
+            // Clear all existing multi-selection areas
+            document.querySelectorAll('.multi-selection-area').forEach(el => el.remove());
+        }
+
+        // Process all selected areas in multi-select mode
+        async function processMultiSelect() {
+            if (multiSelectAreas.length === 0) {
+                document.getElementById('status').textContent = "No areas selected for processing";
+                return;
+            }
+
+            document.getElementById('status').textContent = `Processing ${multiSelectAreas.length} areas...`;
+            
+            let combinedResult = '';
+            const results = [];
+            
+            // Process each area in sequence
+            for (let i = 0; i < multiSelectAreas.length; i++) {
+                const area = multiSelectAreas[i];
+                currentCanvas = area.canvas;
+                
+                // Create a temporary selection area for processing
+                selection = document.createElement('div');
+                selection.style.position = 'absolute';
+                selection.style.left = '0';
+                selection.style.top = '0';
+                selection.style.width = '0';
+                selection.style.height = '0';
+                
+                // Process the area
+                const result = await processArea(area);
+                results.push(result);
+                
+                // Update status
+                document.getElementById('status').textContent = `Processed area ${i+1} of ${multiSelectAreas.length}`;
+            }
+            
+            // Combine results in a:b format
+            for (let i = 0; i < results.length; i += 2) {
+                if (i + 1 < results.length) {
+                    combinedResult += `${results[i]}:${results[i+1]}\n`;
+                } else {
+                    combinedResult += `${results[i]}\n`;
+                }
+            }
+            
+            // Display and copy the combined result
+            document.getElementById('ocr-result').textContent = combinedResult;
+            currentOcrText = combinedResult;
+            
+            const autoCopy = document.getElementById('auto-copy').checked;
+            if (autoCopy) {
+                await copyToClipboard(combinedResult);
+            }
+            
+            document.getElementById('status').textContent = `Processed ${multiSelectAreas.length} areas successfully`;
+            
+            // Exit multi-select mode
+            cancelMultiSelect();
+        }
+
+        // Process a single area (similar to processSelection but returns the text)
+        async function processArea(area) {
+            const { canvas, x, y, width, height } = area;
+            
+            // Create temporary canvas for OCR
+            const tempCanvas = document.createElement('canvas');
+            const ocrScale = 2.0; // Additional scale for better OCR accuracy
+            tempCanvas.width = width * ocrScale;
+            tempCanvas.height = height * ocrScale;
+            const ctx = tempCanvas.getContext('2d');
+            
+            // Improve image quality
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            
+            // Draw the selected area with high resolution
+            ctx.drawImage(
+                canvas, 
+                x, 
+                y, 
+                width, 
+                height,
+                0, 
+                0, 
+                width * ocrScale, 
+                height * ocrScale
+            );
+
+            // Get OCR settings
+            const languages = Array.from(document.querySelectorAll('.language-options input:checked'))
+                                .filter(checkbox => checkbox.value !== 'digits')
+                                .map(checkbox => checkbox.value);
+            const includeDigits = document.getElementById('digits-checkbox').checked;
+            const symbols = document.getElementById('symbols-list').value;
+            const preserveNewlines = document.getElementById('preserve-newlines').checked;
+            const trimNewlines = document.getElementById('trim-newlines').checked;
+            
+            // Configure OCR options
+            let options = {
+                preserve_interword_spaces: '1',
+                tessedit_char_whitelist: ''
+            };
+            
+            // Build character whitelist
+            let charWhitelist = '';
+            
+            if (languages.includes('eng')) {
+                charWhitelist += 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            }
+            if (languages.includes('rus')) {
+                charWhitelist += 'абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ';
+            }
+            
+            if (includeDigits) {
+                charWhitelist += '0123456789';
+            }
+            
+            charWhitelist += symbols;
+            
+            if (!charWhitelist.includes(' ')) {
+                charWhitelist += ' ';
+            }
+            
+            if (preserveNewlines && !charWhitelist.includes('\n')) {
+                charWhitelist += '\n';
+            }
+            
+            options.tessedit_char_whitelist = charWhitelist;
+
+            try {
+                // Handle case when only symbols are specified
+                if (languages.length === 0 && !includeDigits && symbols) {
+                    options.tessedit_char_whitelist = symbols + ' \n';
+                }
+
+                // Perform OCR
+                const result = await Tesseract.recognize(
+                    tempCanvas,
+                    languages.join('+') || 'eng',
+                    options
+                );
+                
+                // Filter the result to keep only allowed characters
+                let filteredText = result.data.text;
+                if (options.tessedit_char_whitelist) {
+                    const allowedChars = new Set(options.tessedit_char_whitelist.split(''));
+                    filteredText = filteredText.split('').filter(c => allowedChars.has(c)).join('');
+                }
+                
+                // Handle line breaks
+                if (!preserveNewlines) {
+                    filteredText = filteredText.replace(/\n/g, ' ');
+                }
+                
+                // Remove all newlines if trimNewlines is enabled
+                if (trimNewlines) {
+                    filteredText = filteredText.replace(/\n/g, ' ');
+                }
+
+                // Convert number sequences to dates
+                filteredText = convertNumbersToDates(filteredText);
+                
+                return filteredText.trim();
+            } catch (error) {
+                console.error('Error in OCR processing:', error);
+                return 'Error processing text';
+            }
+        }
+
+        document.getElementById('file-input').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                pdfFile = file;
+                document.getElementById('status').textContent = "Loading PDF...";
+                const reader = new FileReader();
+                reader.onload = async function(event) {
+                    const typedarray = new Uint8Array(event.target.result);
+                    try {
+                        await loadPDF(typedarray);
+                        document.getElementById('status').textContent = "Ready - select area on PDF";
+                    } catch (error) {
+                        console.error('Error loading PDF:', error);
+                        document.getElementById('status').textContent = "Error loading PDF";
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        async function loadPDF(data) {
+            try {
+                pdfDoc = await pdfjsLib.getDocument({ 
+                    data: data,
+                    cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
+                    cMapPacked: true
+                }).promise;
+                await renderPages();
+            } catch (error) {
+                console.error('Error in loadPDF:', error);
+                throw error;
+            }
+        }
+
+        async function renderPages() {
+            const container = document.getElementById('pdf-container');
+            container.innerHTML = '';
+
+            for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+                const pageContainer = document.createElement('div');
+                pageContainer.className = 'page-container';
+                
+                const pageHeader = document.createElement('div');
+                pageHeader.className = 'page-header';
+                pageHeader.innerHTML = `
+                    <span>Page ${pageNum}</span>
+                    <div class="page-actions">
+                        <button onclick="rotatePage(${pageNum}, -90)">↶</button>
+                        <button onclick="rotatePage(${pageNum}, 90)">↷</button>
+                        <button onclick="downloadPage(${pageNum})">Download</button>
+                    </div>
+                `;
+                pageContainer.appendChild(pageHeader);
+
+                const canvasContainer = document.createElement('div');
+                canvasContainer.className = 'canvas-container';
+                
+                const canvas = document.createElement('canvas');
+                canvas.setAttribute('data-page', pageNum);
+                canvasContainer.appendChild(canvas);
+
+                const selectionArea = document.createElement('div');
+                selectionArea.id = `selection-area-${pageNum}`;
+                selectionArea.className = 'selection-area';
+                canvasContainer.appendChild(selectionArea);
+
+                pageContainer.appendChild(canvasContainer);
+                container.appendChild(pageContainer);
+
+                try {
+                    await renderPage(pageNum, canvas);
+                } catch (error) {
+                    console.error(`Error rendering page ${pageNum}:`, error);
+                }
+            }
+
+            setupSelectionEvents();
+        }
+
+        async function renderPage(pageNum, canvas) {
+            try {
+                const page = await pdfDoc.getPage(pageNum);
+                const rotation = rotations[pageNum] || 0;
+                
+                // Higher scale for better quality
+                const scale = 3.0;
+                const viewport = page.getViewport({ 
+                    scale: scale * window.devicePixelRatio, 
+                    rotation 
+                });
+                
+                // Save original dimensions for coordinate calculations
+                canvas.dataset.originalWidth = viewport.width;
+                canvas.dataset.originalHeight = viewport.height;
+                
+                // Set canvas dimensions
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                canvas.style.width = `${viewport.width / window.devicePixelRatio}px`;
+                canvas.style.height = `${viewport.height / window.devicePixelRatio}px`;
+
+                const context = canvas.getContext('2d');
+                context.imageSmoothingEnabled = true;
+                context.imageSmoothingQuality = 'high';
+                context.clearRect(0, 0, canvas.width, canvas.height);
+                
+                await page.render({
+                    canvasContext: context,
+                    viewport: viewport,
+                    intent: 'print',
+                    background: '#ffffff',
+                    disableAutoRegister: false,
+                    disableFontFace: false,
+                    enableWebGL: true
+                }).promise;
+            } catch (error) {
+                console.error(`Error in renderPage for page ${pageNum}:`, error);
+                throw error;
+            }
+        }
+
+        function setupSelectionEvents() {
+            const containers = document.querySelectorAll('.canvas-container');
+            containers.forEach(container => {
+                container.addEventListener('mousedown', startSelection);
+                container.addEventListener('mousemove', updateSelection);
+                container.addEventListener('mouseup', endSelection);
+                container.addEventListener('mouseenter', showSelectionTooltip);
+                container.addEventListener('mouseleave', hideTooltip);
+            });
+        }
+
+        function showSelectionTooltip(e) {
+            if (!currentOcrText) return;
+            
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            if (selection && selection.style.display === 'block') {
+                const selectionRect = selection.getBoundingClientRect();
+                if (e.clientX >= selectionRect.left && 
+                    e.clientX <= selectionRect.right &&
+                    e.clientY >= selectionRect.top && 
+                    e.clientY <= selectionRect.bottom) {
+                    showTooltip(currentOcrText, e.clientX, e.clientY);
+                }
+            }
+        }
+
+        function startSelection(e) {
+            if (e.button !== 0) return;
+            
+            const container = e.currentTarget;
+            currentCanvas = container.querySelector('canvas');
+            const rect = container.getBoundingClientRect();
+            
+            // Calculate scale between original and displayed dimensions
+            const scaleX = parseFloat(currentCanvas.dataset.originalWidth) / rect.width;
+            const scaleY = parseFloat(currentCanvas.dataset.originalHeight) / rect.height;
+            
+            // Save actual coordinates on the canvas
+            startX = (e.clientX - rect.left) * scaleX;
+            startY = (e.clientY - rect.top) * scaleY;
+            
+            if (multiSelectMode) {
+                // Create a new multi-selection area
+                selection = document.createElement('div');
+                selection.className = 'multi-selection-area';
+                container.appendChild(selection);
+                
+                // Set visual selection position (in screen pixels)
+                selection.style.display = 'block';
+                selection.style.left = (e.clientX - rect.left) + 'px';
+                selection.style.top = (e.clientY - rect.top) + 'px';
+                selection.style.width = '0px';
+                selection.style.height = '0px';
+            } else {
+                // Set visual selection position (in screen pixels)
+                selection = container.querySelector('.selection-area');
+                selection.style.display = 'block';
+                selection.style.left = (e.clientX - rect.left) + 'px';
+                selection.style.top = (e.clientY - rect.top) + 'px';
+                selection.style.width = '0px';
+                selection.style.height = '0px';
+            }
+            
+            selecting = true;
+            document.getElementById('status').textContent = "Selecting area...";
+        }
+
+        function updateSelection(e) {
+            if (!selecting) return;
+            
+            const container = e.currentTarget;
+            const rect = container.getBoundingClientRect();
+            
+            // Calculate scale between original and displayed dimensions
+            const scaleX = parseFloat(currentCanvas.dataset.originalWidth) / rect.width;
+            const scaleY = parseFloat(currentCanvas.dataset.originalHeight) / rect.height;
+            
+            // Get actual coordinates on the canvas
+            const currentX = (e.clientX - rect.left) * scaleX;
+            const currentY = (e.clientY - rect.top) * scaleY;
+            
+            const width = currentX - startX;
+            const height = currentY - startY;
+            
+            // Update visual selection (in screen pixels)
+            selection.style.width = Math.abs(width / scaleX) + 'px';
+            selection.style.height = Math.abs(height / scaleY) + 'px';
+            selection.style.left = (width < 0 ? (currentX / scaleX) : (startX / scaleX)) + 'px';
+            selection.style.top = (height < 0 ? (currentY / scaleY) : (startY / scaleY)) + 'px';
+        }
+
+        async function endSelection() {
+            if (!selecting) return;
+            selecting = false;
+            
+            if (multiSelectMode) {
+                // Save the selection for later processing
+                const container = selection.parentElement;
+                const rect = container.getBoundingClientRect();
+                const selectionRect = selection.getBoundingClientRect();
+                
+                // Calculate scale between original and displayed dimensions
+                const scaleX = parseFloat(currentCanvas.dataset.originalWidth) / rect.width;
+                const scaleY = parseFloat(currentCanvas.dataset.originalHeight) / rect.height;
+                
+                // Convert to canvas coordinates
+                const x = (selectionRect.left - rect.left) * scaleX;
+                const y = (selectionRect.top - rect.top) * scaleY;
+                const width = selectionRect.width * scaleX;
+                const height = selectionRect.height * scaleY;
+                
+                // Save the selection area
+                multiSelectAreas.push({
+                    canvas: currentCanvas,
+                    x: x,
+                    y: y,
+                    width: width,
+                    height: height,
+                    element: selection
+                });
+                
+                document.getElementById('status').textContent = `Area ${multiSelectAreas.length} selected - continue selecting or click "Process Selections"`;
+            } else {
+                await processSelection();
+            }
+        }
+
+        async function processSelection() {
+            if (!selection || !currentCanvas) return;
+
+            document.getElementById('status').textContent = "Processing OCR...";
+            
+            // Get canvas dimensions and position
+            const canvasRect = currentCanvas.getBoundingClientRect();
+            
+            // Calculate scale between original and displayed dimensions
+            const scaleX = parseFloat(currentCanvas.dataset.originalWidth) / canvasRect.width;
+            const scaleY = parseFloat(currentCanvas.dataset.originalHeight) / canvasRect.height;
+            
+            // Get selection rectangle in screen coordinates
+            const selectionRect = selection.getBoundingClientRect();
+            
+            // Convert to canvas coordinates
+            const x = (selectionRect.left - canvasRect.left) * scaleX;
+            const y = (selectionRect.top - canvasRect.top) * scaleY;
+            const width = selectionRect.width * scaleX;
+            const height = selectionRect.height * scaleY;
+
+            // Create temporary canvas for OCR
+            const tempCanvas = document.createElement('canvas');
+            const ocrScale = 2.0; // Additional scale for better OCR accuracy
+            tempCanvas.width = width * ocrScale;
+            tempCanvas.height = height * ocrScale;
+            const ctx = tempCanvas.getContext('2d');
+            
+            // Improve image quality
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            
+            // Draw the selected area with high resolution
+            ctx.drawImage(
+                currentCanvas, 
+                x, 
+                y, 
+                width, 
+                height,
+                0, 
+                0, 
+                width * ocrScale, 
+                height * ocrScale
+            );
+
+            // Get OCR settings
+            const languages = Array.from(document.querySelectorAll('.language-options input:checked'))
+                                .filter(checkbox => checkbox.value !== 'digits')
+                                .map(checkbox => checkbox.value);
+            const includeDigits = document.getElementById('digits-checkbox').checked;
+            const symbols = document.getElementById('symbols-list').value;
+            const preserveNewlines = document.getElementById('preserve-newlines').checked;
+            const trimNewlines = document.getElementById('trim-newlines').checked;
+            const autoCopy = document.getElementById('auto-copy').checked;
+            
+            // Configure OCR options
+            let options = {
+                preserve_interword_spaces: '1',
+                tessedit_char_whitelist: ''
+            };
+            
+            // Build character whitelist
+            let charWhitelist = '';
+            
+            if (languages.includes('eng')) {
+                charWhitelist += 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            }
+            if (languages.includes('rus')) {
+                charWhitelist += 'абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ';
+            }
+            
+            if (includeDigits) {
+                charWhitelist += '0123456789';
+            }
+            
+            charWhitelist += symbols;
+            
+            if (!charWhitelist.includes(' ')) {
+                charWhitelist += ' ';
+            }
+            
+            if (preserveNewlines && !charWhitelist.includes('\n')) {
+                charWhitelist += '\n';
+            }
+            
+            options.tessedit_char_whitelist = charWhitelist;
+
+            try {
+                // Handle case when only symbols are specified
+                if (languages.length === 0 && !includeDigits && symbols) {
+                    options.tessedit_char_whitelist = symbols + ' \n';
+                }
+
+                // Perform OCR
+                const result = await Tesseract.recognize(
+                    tempCanvas,
+                    languages.join('+') || 'eng',
+                    options
+                );
+                
+                // Filter the result to keep only allowed characters
+                let filteredText = result.data.text;
+                if (options.tessedit_char_whitelist) {
+                    const allowedChars = new Set(options.tessedit_char_whitelist.split(''));
+                    filteredText = filteredText.split('').filter(c => allowedChars.has(c)).join('');
+                }
+                
+                // Handle line breaks
+                if (!preserveNewlines) {
+                    filteredText = filteredText.replace(/\n/g, ' ');
+                }
+                
+                // Remove all newlines if trimNewlines is enabled
+                if (trimNewlines) {
+                    filteredText = filteredText.replace(/\n/g, ' ');
+                }
+
+                // Convert number sequences to dates
+                filteredText = convertNumbersToDates(filteredText);
+                
+                // Display results
+                document.getElementById('ocr-result').textContent = filteredText;
+                currentOcrText = filteredText;
+                document.getElementById('status').textContent = "OCR completed successfully";
+                
+                // Auto-copy if enabled
+                if (autoCopy) {
+                    await copyToClipboard(filteredText);
+                }
+                
+                // Save settings
+                saveSettings();
+            } catch (error) {
+                console.error('Error in OCR processing:', error);
+                document.getElementById('ocr-result').textContent = 'Error processing text. Please try again.';
+                document.getElementById('status').textContent = "OCR processing failed";
+            }
+        }
+
+        // Set up button event listeners
+        document.getElementById('copy-result').addEventListener('click', async () => {
+            const resultText = document.getElementById('ocr-result').textContent;
+            if (resultText) {
+                await copyToClipboard(resultText);
+            }
+        });
+
+        document.getElementById('clear-result').addEventListener('click', () => {
+            document.getElementById('ocr-result').textContent = "";
+            currentOcrText = '';
+            document.getElementById('status').textContent = "Result cleared";
+        });
+
+        // Multi-select buttons
+        document.getElementById('start-multi-select').addEventListener('click', () => {
+            if (multiSelectMode) {
+                cancelMultiSelect();
+            } else {
+                startMultiSelect();
+            }
+        });
+
+        document.getElementById('process-multi-select').addEventListener('click', processMultiSelect);
+
+        // Make functions available globally
+        window.rotatePage = async function(pageNum, degrees) {
+            rotations[pageNum] = (rotations[pageNum] || 0) + degrees;
+            const canvas = document.querySelector(`canvas[data-page="${pageNum}"]`);
+            await renderPage(pageNum, canvas);
+            document.getElementById('status').textContent = `Page ${pageNum} rotated`;
+        };
+
+        window.rotateAllPages = rotateAllPages;
+        window.downloadPage = downloadPage;
+    </script>
+</body>
+  </html>
